@@ -35,7 +35,15 @@
 #define TSC_THREADING_MODEL_NOT_WIN
 #elif defined(_WIN32)
 #define TSC_THREADING_MODEL_WIN
-//#include <windows.h>
+#ifndef UNICODE
+#define UNICODE
+#endif
+#ifdef UNICODE
+#ifndef _UNICODE
+#define _UNICODE
+#endif
+#endif
+#include <windows.h>
 #endif
 
 #ifdef TSC_THREADING_MODEL_WIN
@@ -47,8 +55,8 @@
 #define TSC_LOCK_INIT(lock)		InitializeCriticalSection(lock)
 #define TSC_LOCK_DELETE(lock)	DeleteCriticalSection(lock)
 
-#define TSC_MAX					max
-#define TSC_MIN					min
+#define TSC_MAX					std::max
+#define TSC_MIN					std::min
 
 #define PATH_SEP	'\\'
 

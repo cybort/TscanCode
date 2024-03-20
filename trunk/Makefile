@@ -17,6 +17,9 @@ endif
 
 # Force including libpthread
 LIBS+=-lpthread
+LIBS+=-lKernel32
+LIBS+=-lDbghelp
+LIBS+=-lShlwapi
 
 ifndef INCLUDE_FOR_LIB
     INCLUDE_FOR_LIB=-Ilib -Icommon -Iexternals/tinyxml
@@ -30,7 +33,9 @@ endif
 COMMONOBJ =     common/path.o        \
                 common/filelister.o    \
                 common/pathmatch.o    \
-                common/filedepend.o
+                common/filedepend.o  \
+                common/crashhelp.o \
+                common/dnetthread.cpp
 
 LIBOBJ =      $(SRCDIR)/astutils.o \
               $(SRCDIR)/check.o \

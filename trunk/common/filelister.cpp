@@ -29,7 +29,18 @@
 ///////////////////////////////////////////////////////////////////////////////
 ////// This code is WIN32 systems /////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+// Always compiler using Unicode.
+#ifndef UNICODE
+#define UNICODE
+#endif
 
+// When using Unicode Windows functions, use Unicode C-Runtime functions too.
+#ifdef UNICODE
+#ifndef _UNICODE
+#define _UNICODE
+#endif
+#endif
+//all windows header should be put after the unicode macro
 #include <windows.h>
 #ifndef __BORLANDC__
 #include <shlwapi.h>

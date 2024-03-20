@@ -2,15 +2,14 @@
 Module:  APIHook.cpp
 Notices: Copyright (c) 2008 Jeffrey Richter & Christophe Nasarre
 ******************************************************************************/
-#include <Windows.h>
-#include <tchar.h>
-#include <StrSafe.h>
-#include <DbgHelp.h>
-#include <tlhelp32.h>
+//#include <Windows.h>
+//#include "config.h"
 #include <stdlib.h>
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <locale>
+#include <codecvt>
 #include "CrashHelp.h"
 #pragma comment(lib, "DbgHelp.lib")
 
@@ -44,16 +43,26 @@ See Appendix A.
 #endif
 #endif
 
-
+#ifdef UNICODE
+#pragma message("UNICODE is defined. ")
+#endif
+#ifdef _UNICODE
+#pragma message("_UNICODE is defined. ")
+#endif
 ///////////////////////// Include Windows Definitions /////////////////////////
-
+//all windows header should be put after the unicode macro
 #pragma warning(push, 3)
 #include <Windows.h>
 #pragma warning(pop) 
 #pragma warning(push, 4)
 #include <CommCtrl.h>
 #include <process.h>       // For _beginthreadex
-
+#include <tchar.h>
+#include <StrSafe.h>
+#include <DbgHelp.h>
+#include <tlhelp32.h>
+#include <excpt.h>
+#include <eh.h>
 
 ///////////// Verify that the proper header files are being used //////////////
 
@@ -224,7 +233,7 @@ inline void chFAIL(PSTR szMsg) {
 // Put up an assertion failure message box.
 inline void chASSERTFAIL(LPCSTR file, int line, PCSTR expr) {
 	char sz[2 * MAX_PATH];
-	wsprintfA(sz, "File %s, line %d : %s", file, line, expr);
+	StringCbPrintfA(sz, sizeof(sz), "File %s, line %d : %s", file, line, expr);
 	chFAIL(sz);
 }
 
@@ -769,7 +778,7 @@ void CAPIHook::ReplaceIATEntryInAllMods(PCSTR pszCalleeModName,
    PROC pfnCurrent, PROC pfnNew) {
 
    HMODULE hmodThisMod = ExcludeAPIHookMod 
-      ? ModuleFromAddress(ReplaceIATEntryInAllMods) : NULL;
+      ? ModuleFromAddress(reinterpret_cast<PVOID>(ReplaceIATEntryInAllMods)) : NULL;
 
    // Get the list of modules in this process
    CToolhelp th(TH32CS_SNAPMODULE, GetCurrentProcessId());
@@ -815,17 +824,22 @@ void CAPIHook::ReplaceIATEntryInOneMod(PCSTR pszCalleeModName,
    // Maybe some threading problem: the list of modules from Toolhelp might 
    // not be accurate if FreeLibrary is called during the enumeration.
    PIMAGE_IMPORT_DESCRIPTOR pImportDesc = NULL;
-   __try {
+   //__try {
       pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR) ImageDirectoryEntryToData(
          hmodCaller, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &ulSize);
-   } 
-   __except (InvalidReadExceptionFilter(GetExceptionInformation())) {
-      // Nothing to do in here, thread continues to run normally
-      // with NULL for pImportDesc 
-   }
+
+   //}
+   //__except (InvalidReadExceptionFilter(GetExceptionInformation())) {
+	  // Nothing to do in here, thread continues to run normally
+	  // with NULL for pImportDesc 
+   //}
    
    if (pImportDesc == NULL)
-      return;  // This module has no import section or is no longer loaded
+   {
+	   DWORD error = GetLastError();
+	   return;  // This module has no import section or is no longer loaded
+   }
+      
 
 
    // Find the import descriptor containing references to callee's functions
@@ -876,17 +890,20 @@ void CAPIHook::ReplaceEATEntryInOneMod(HMODULE hmod, PCSTR pszFunctionName,
    ULONG ulSize;
 
    PIMAGE_EXPORT_DIRECTORY pExportDir = NULL;
-   __try {
+   //__try {
       pExportDir = (PIMAGE_EXPORT_DIRECTORY) ImageDirectoryEntryToData(
          hmod, TRUE, IMAGE_DIRECTORY_ENTRY_EXPORT, &ulSize);
-   } 
-   __except (InvalidReadExceptionFilter(GetExceptionInformation())) {
-      // Nothing to do in here, thread continues to run normally
-      // with NULL for pExportDir 
-   }
+   //} 
+   //__except (InvalidReadExceptionFilter(GetExceptionInformation())) {
+	  // Nothing to do in here, thread continues to run normally
+	  // with NULL for pExportDir 
+   //}
    
    if (pExportDir == NULL)
-      return;  // This module has no export section or is unloaded
+   {
+      DWORD error = GetLastError();
+	  return;  // This module has no export section or is unloaded
+   }
 
    PDWORD pdwNamesRvas = (PDWORD) ((PBYTE) hmod + pExportDir->AddressOfNames);
    PWORD pdwNameOrdinals = (PWORD) 
@@ -956,7 +973,7 @@ void CAPIHook::FixupNewlyLoadedModule(HMODULE hmod, DWORD dwFlags) {
 
    // If a new module is loaded, hook the hooked functions
    if ((hmod != NULL) &&   // Do not hook our own module
-       (hmod != ModuleFromAddress(FixupNewlyLoadedModule)) && 
+       (hmod != ModuleFromAddress(reinterpret_cast<PVOID>(FixupNewlyLoadedModule))) && 
        ((dwFlags & LOAD_LIBRARY_AS_DATAFILE) == 0) &&
        ((dwFlags & LOAD_LIBRARY_AS_DATAFILE_EXCLUSIVE) == 0) &&
        ((dwFlags & LOAD_LIBRARY_AS_IMAGE_RESOURCE) == 0)
@@ -1112,8 +1129,10 @@ int RecordCurStack()
 	TCHAR szBuf[MAX_PATH];
 	GetModuleFileName(NULL, szBuf, MAX_PATH);
 	std::string::size_type pos = std::wstring(szBuf).find_last_of('\\');
-	wss << std::wstring(szBuf, 0, pos) << "\\csharp.crash." << sysTime.wDay << "_" << sysTime.wHour << "_" << sysTime.wMinute << ".dmp";
-	HANDLE hFile = ::CreateFile(wss.str().c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	wss << std::wstring(szBuf, 0, pos) << L"\\csharp.crash." << sysTime.wDay << L"_" << sysTime.wHour << L"_" << sysTime.wMinute << L".dmp";
+	std::wstring filePath = wss.str();
+	LPCWSTR lpFilePath = filePath.c_str();
+	HANDLE hFile = ::CreateFile(lpFilePath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile != INVALID_HANDLE_VALUE)
 	{
 		::MiniDumpWriteDump(::GetCurrentProcess(), ::GetCurrentProcessId(), hFile, MiniDumpWithFullMemory, NULL, NULL, NULL);
@@ -1132,7 +1151,8 @@ bool bCreateDumpThrd = true;
 void CreateDumpThrd(void* pv)
 {
 	HANDLE hFile;
-	std::wstring strPath = TEXT("./ADTV2_TEMP.TXT");
+	LPCWSTR lpFilePath;
+	std::wstring strPath = L"./ADTV2_TEMP.TXT";
 	while (bCreateDumpThrd)
 	{
 		//每5秒检测一次 
@@ -1149,7 +1169,8 @@ void CreateDumpThrd(void* pv)
 		{
 			//防止多次记录当前堆栈信息，删除文件 
 			::CloseHandle(hFile);
-			::DeleteFile(strPath.c_str());
+			lpFilePath = strPath.c_str();
+			::DeleteFile(lpFilePath);
 			RecordCurStack();
 		}
 	}
